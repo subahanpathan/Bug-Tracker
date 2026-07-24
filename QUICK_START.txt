@@ -1,0 +1,216 @@
+📝 QUICK START GUIDE - BUG TRACKER
+
+═══════════════════════════════════════════════════════════════
+
+## ⚡ 5-MINUTE SETUP
+
+### Prerequisites
+- Node.js v16+ installed
+- Supabase account (free at supabase.com)
+- Code editor (VS Code recommended)
+
+───────────────────────────────────────────────────────────────
+
+## 🚀 SETUP STEPS
+
+### STEP 1: Install Dependencies (2 minutes)
+
+Windows:
+  > setup.bat
+
+macOS/Linux:
+  $ bash setup.sh
+
+OR manually:
+  $ cd backend && npm install
+  $ cd ../frontend && npm install
+
+✅ Wait for npm to finish - you'll see "added XXX packages"
+
+───────────────────────────────────────────────────────────────
+
+### STEP 2: Create Supabase Project (3 minutes)
+
+1. Go to https://supabase.com
+2. Click "New Project" or login if you have account
+3. Fill in project details:
+   - Project name: "bug-tracker"
+   - Password: (save this!)
+   - Region: (closest to you)
+4. Wait ~2 minutes for project to initialize
+5. Go to "Settings" > "API"
+6. Copy:
+   - Project URL → SUPABASE_URL
+   - anon public key → SUPABASE_KEY
+   - service_role key → SUPABASE_SERVICE_KEY
+
+───────────────────────────────────────────────────────────────
+
+### STEP 3: Setup Database Schema (1 minute)
+
+1. In Supabase dashboard, click "SQL Editor"
+2. Click "New Query"
+3. Open file: `database/schema.sql`
+4. Copy ALL content
+5. Paste into SQL Editor
+6. Click "Run"
+7. Wait for success message
+
+✅ All tables created!
+
+───────────────────────────────────────────────────────────────
+
+### STEP 4: Configure Environment Variables (1 minute)
+
+**backend/.env**
+```
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_KEY=eyJ0eXAiOiJKV1QiLCJhbGc...
+SUPABASE_SERVICE_KEY=eyJ0eXAiOiJKV1QiLCJhbGc...
+JWT_SECRET=your-random-secret-key-at-least-32-characters-long
+PORT=5000
+NODE_ENV=development
+CORS_ORIGIN=http://localhost:3000
+```
+
+**frontend/.env**
+```
+VITE_API_URL=http://localhost:5000/api
+VITE_SUPABASE_URL=https://xxxxx.supabase.co
+VITE_SUPABASE_KEY=eyJ0eXAiOiJKV1QiLCJhbGc...
+VITE_ENV=development
+```
+
+───────────────────────────────────────────────────────────────
+
+### STEP 5: Start Development Servers
+
+Open 2 terminal windows:
+
+**Terminal 1 - Backend:**
+  $ cd backend
+  $ npm run dev
+  
+  You should see:
+  ╔════════════════════════════════════════╗
+  ║     Bug Tracker API Server Running     ║
+  ╠════════════════════════════════════════╣
+  ║  URL: http://localhost:5000            ║
+  ║  Environment: development              ║
+  ╚════════════════════════════════════════╝
+
+**Terminal 2 - Frontend:**
+  $ cd frontend
+  $ npm run dev
+  
+  You should see:
+  ➜  Local:   http://localhost:3000/
+  ➜  Press h to show help
+
+───────────────────────────────────────────────────────────────
+
+### STEP 6: Test the Application ✅
+
+1. Open browser: http://localhost:3000
+2. Click "Sign Up"
+3. Register account:
+   - Email: test@example.com
+   - Password: TestPass123!
+   - First Name: Test
+   - Last Name: User
+4. Click "Register"
+5. You should see Dashboard! 🎉
+
+───────────────────────────────────────────────────────────────
+
+## 📋 VERIFY SETUP
+
+Check these to ensure everything works:
+
+✅ Backend server running on http://localhost:5000
+✅ Frontend app running on http://localhost:3000
+✅ Can see health check: http://localhost:5000/api/health
+✅ Can register new user
+✅ Can login with credentials
+✅ Can see dashboard after login
+
+───────────────────────────────────────────────────────────────
+
+## 🆘 TROUBLESHOOTING
+
+❌ "Port 5000 already in use"
+  → Kill process: lsof -ti:5000 | xargs kill -9
+
+❌ "Port 3000 already in use"
+  → Kill process: lsof -ti:3000 | xargs kill -9
+
+❌ "Cannot find module"
+  → Delete node_modules folder
+  → Run npm install again
+
+❌ "Supabase connection error"
+  → Check .env file has correct credentials
+  → Verify project is active on supabase.com
+
+❌ "Tailwind CSS not working"
+  → Run: npm install again
+  → Restart dev server
+
+───────────────────────────────────────────────────────────────
+
+## 📂 PROJECT STRUCTURE
+
+BUG TRACKER/
+├── backend/          ← Express.js API (Port 5000)
+├── frontend/         ← React App (Port 3000)
+├── database/         ← Schema & docs
+├── docs/            ← API documentation
+└── README.md        ← Full project info
+
+───────────────────────────────────────────────────────────────
+
+## 🎯 WHAT'S READY TO BUILD
+
+✅ User Authentication (Login/Register)
+✅ Projects Management
+✅ Bug/Issue Tracking
+✅ Comments System
+✅ File Attachments
+✅ Tailwind CSS Styling
+✅ API Endpoints
+✅ Database Schema
+
+NOW READY FOR:
+⏳ Kanban Board (Drag & Drop)
+⏳ Advanced Filters
+⏳ Real-time Updates
+⏳ More Features...
+
+───────────────────────────────────────────────────────────────
+
+## 📚 DOCUMENTATION
+
+- README.md → Project overview
+- SETUP_GUIDE.md → Detailed setup
+- MERN_SETUP_READY.md → Complete configuration info
+- docs/API_DOCS.md → API reference
+- database/README.md → Database schema
+
+───────────────────────────────────────────────────────────────
+
+## 💡 PRO TIPS
+
+1. Use separate terminals for backend/frontend
+2. Keep both servers running while developing
+3. Use browser DevTools (F12) to debug frontend
+4. Check backend logs in terminal for API errors
+5. Use Supabase UI to inspect database
+
+───────────────────────────────────────────────────────────────
+
+You're ready! 🚀
+
+Next: Tell me what feature to build first!
+(Kanban Board? Filters? Anything else?)
+
+═══════════════════════════════════════════════════════════════

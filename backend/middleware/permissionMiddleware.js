@@ -1,0 +1,692 @@
+import { hasPermission, isRoleAtLeast, ROLES } from '../config/permissions.js';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
+
+/**
+ * Helper to extract project ID from any request location (params, query, body)
+ */
+const getProjectId = (req) => {
+  return req.params.projectId || req.params.id || req.query.projectId || req.body.projectId;
+};
+
+/**
+ * Permission Middleware Factory
+ * Creates middleware to check permissions for specific actions
+ */
+
+/**
+ * Check if user has permission for an action
+ * @param {string} permission - Permission string (e.g., 'ticket:create')
+ * @returns {Function} Express middleware
+ */
+export const checkPermission = (permission) => {
+  return async (req, res, next) => {
+    try {
+      const userId = req.userId;
+      const projectId = getProjectId(req);
+
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized - No user found' });
+      }
+
+      if (!projectId) {
+        return res.status(400).json({ message: 'Bad Request - Project ID required' });
+      }
+
+      // Get user's role in the project
+      const { data: membership, error } = await supabase
+        .from('project_members')
+        .select('role')
+        .eq('project_id', projectId)
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        return res.status(500).json({ message: 'Error checking permissions' });
+      }
+
+      // Check if user is project owner (owner role supersedes project_members entry)
+      const { data: project } = await supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', projectId)
+        .single();
+
+      let userRole = ROLES.VIEWER;
+
+      if (project?.owner_id === userId) {
+        userRole = ROLES.OWNER;
+      } else if (membership?.role) {
+        userRole = membership.role;
+      }
+
+      // Check if role has permission
+      if (!hasPermission(userRole, permission)) {
+        return res.status(403).json({
+          message: `Forbidden - You do not have permission to perform this action. Required role: ${permission}`
+        });
+      }
+
+      // Attach role to request for later use
+      req.userRole = userRole;
+      req.projectId = projectId;
+
+      next();
+    } catch (error) {
+      console.error('Permission check error:', error);
+      res.status(500).json({ message: 'Internal Server Error' });
+    }
+  };
+};
+
+/**
+ * Check if user is project owner
+ */
+export const isProjectOwner = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const projectId = getProjectId(req);
+
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+
+    if (error) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (project.owner_id !== userId) {
+      return res.status(403).json({ message: 'Forbidden - Only project owner can perform this action' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Owner check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can view project (owner or member)
+ */
+export const canViewProject = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const projectId = getProjectId(req);
+
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Is owner?
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+
+    if (error) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (project.owner_id === userId) {
+      return next();
+    }
+
+    // Is member?
+    const { data: member } = await supabase
+      .from('project_members')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (member) {
+      return next();
+    }
+
+    return res.status(403).json({ message: 'Forbidden - You do not have access to this project' });
+  } catch (error) {
+    console.error('View project check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user has admin role in project
+ */
+export const isProjectAdmin = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const projectId = getProjectId(req);
+
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get project owner
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Owner is admin by default
+    if (project.owner_id === userId) {
+      return next();
+    }
+
+    // Check if user is admin member
+    const { data: membership, error: memberError } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (memberError || membership?.role !== ROLES.ADMIN) {
+      return res.status(403).json({ message: 'Forbidden - Admin role required' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Admin check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user is developer or above
+ */
+export const isDeveloperOrAbove = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const projectId = getProjectId(req);
+
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get project owner
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Owner and admin are always allowed
+    if ([project.owner_id].includes(userId)) {
+      return next();
+    }
+
+    // Check if user is member with developer role or above
+    const { data: membership, error: memberError } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (memberError) {
+      return res.status(403).json({ message: 'Forbidden - You are not a member of this project' });
+    }
+
+    const allowedRoles = [ROLES.ADMIN, ROLES.DEVELOPER];
+    if (!allowedRoles.includes(membership?.role)) {
+      return res.status(403).json({ message: 'Forbidden - Developer role or above required' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Developer check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can edit ticket
+ * Developers can only edit their own or assigned tickets
+ */
+export const canEditTicket = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const ticketId = req.params.id;
+
+    if (!userId || !ticketId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get ticket details
+    const { data: ticket, error: ticketError } = await supabase
+      .from('bugs')
+      .select('id, project_id, reporter_id, assignee_id')
+      .eq('id', ticketId)
+      .single();
+
+    if (ticketError) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    // Get user's role in project
+    const { data: project } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', ticket.project_id)
+      .single();
+
+    if (project.owner_id === userId) {
+      return next(); // Owner can edit anything
+    }
+
+    const { data: membership } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', ticket.project_id)
+      .eq('user_id', userId)
+      .single();
+
+    const role = membership?.role || ROLES.VIEWER;
+
+    // Admins can edit anything
+    if (role === ROLES.ADMIN) {
+      return next();
+    }
+
+    // Developers can only edit own or assigned tickets
+    if (role === ROLES.DEVELOPER) {
+      const isCreator = ticket.reporter_id === userId;
+      const isAssigned = ticket.assignee_id === userId;
+
+      if (isCreator || isAssigned) {
+        return next();
+      }
+
+      return res.status(403).json({
+        message: 'Forbidden - You can only edit tickets you created or are assigned to'
+      });
+    }
+
+    // Viewers cannot edit
+    res.status(403).json({ message: 'Forbidden - Your role does not permit editing tickets' });
+  } catch (error) {
+    console.error('Edit ticket check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can delete ticket
+ */
+export const canDeleteTicket = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const ticketId = req.params.id;
+
+    if (!userId || !ticketId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    const { data: ticket, error: ticketError } = await supabase
+      .from('bugs')
+      .select('project_id')
+      .eq('id', ticketId)
+      .single();
+
+    if (ticketError) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    // Only owner/admin can delete
+    const { data: project } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', ticket.project_id)
+      .single();
+
+    if (project.owner_id === userId) {
+      return next();
+    }
+
+    const { data: membership } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', ticket.project_id)
+      .eq('user_id', userId)
+      .single();
+
+    if (membership?.role === ROLES.ADMIN) {
+      return next();
+    }
+
+    res.status(403).json({ message: 'Forbidden - Only admins can delete tickets' });
+  } catch (error) {
+    console.error('Delete ticket check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can assign ticket
+ */
+export const canAssignTicket = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const ticketId = req.params.id;
+
+    if (!userId || !ticketId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    const { data: ticket, error: ticketError } = await supabase
+      .from('bugs')
+      .select('project_id')
+      .eq('id', ticketId)
+      .single();
+
+    if (ticketError) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    // Get user's role in project
+    const { data: project } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', ticket.project_id)
+      .single();
+
+    if (project.owner_id === userId) {
+      return next();
+    }
+
+    const { data: membership } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', ticket.project_id)
+      .eq('user_id', userId)
+      .single();
+
+    if (membership?.role === ROLES.ADMIN) {
+      return next();
+    }
+
+    res.status(403).json({ message: 'Forbidden - Only admins can assign tickets' });
+  } catch (error) {
+    console.error('Assign ticket check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user is a global system admin
+ */
+export const isAdmin = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (error || user.role !== ROLES.ADMIN) {
+      return res.status(403).json({ message: 'Forbidden - System Admin access required' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Admin check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user is accessing their own data or is an admin
+ */
+export const isSelfOrAdmin = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const targetUserId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Check if it's the user themselves
+    if (userId === targetUserId) {
+      return next();
+    }
+
+    // Check if user is admin
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (!error && user.role === ROLES.ADMIN) {
+      return next();
+    }
+
+    res.status(403).json({ message: 'Forbidden - You can only manage your own data' });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can view a specific ticket
+ */
+export const canViewTicket = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const ticketId = req.params.id || req.params.bugId || req.params.ticketId || req.body.bugId;
+
+    if (!userId || !ticketId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get ticket's project ID
+    const { data: ticket, error: ticketError } = await supabase
+      .from('bugs')
+      .select('project_id')
+      .eq('id', ticketId)
+      .single();
+
+    if (ticketError) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    const projectId = ticket.project_id;
+
+    // Is project owner?
+    const { data: project } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+
+    if (project?.owner_id === userId) {
+      return next();
+    }
+
+    // Is member?
+    const { data: membership } = await supabase
+      .from('project_members')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (membership) {
+      return next();
+    }
+
+    return res.status(403).json({ message: 'Forbidden - You do not have access to this ticket' });
+  } catch (error) {
+    console.error('View ticket check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can edit/delete a comment
+ */
+export const canManageComment = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const commentId = req.params.id;
+
+    if (!userId || !commentId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get comment details
+    const { data: comment, error: commentError } = await supabase
+      .from('comments')
+      .select('author_id, bug_id')
+      .eq('id', commentId)
+      .single();
+
+    if (commentError) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    // Author can always manage their own comment
+    if (comment.author_id === userId) {
+      return next();
+    }
+
+    // Project owner/admin can also manage comments
+    const { data: ticket } = await supabase
+      .from('bugs')
+      .select('project_id')
+      .eq('id', comment.bug_id)
+      .single();
+
+    if (ticket) {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', ticket.project_id)
+        .single();
+
+      if (project?.owner_id === userId) {
+        return next();
+      }
+
+      const { data: membership } = await supabase
+        .from('project_members')
+        .select('role')
+        .eq('project_id', ticket.project_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (membership?.role === ROLES.ADMIN) {
+        return next();
+      }
+    }
+
+    return res.status(403).json({ message: 'Forbidden - You cannot manage this comment' });
+  } catch (error) {
+    console.error('Manage comment check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can delete an attachment
+ */
+export const canManageAttachment = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const attachmentId = req.params.id;
+
+    if (!userId || !attachmentId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get attachment details
+    const { data: attachment, error: attachmentError } = await supabase
+      .from('attachments')
+      .select('uploaded_by, bug_id')
+      .eq('id', attachmentId)
+      .single();
+
+    if (attachmentError) {
+      return res.status(404).json({ message: 'Attachment not found' });
+    }
+
+    // Uploader can always manage their own attachment
+    if (attachment.uploaded_by === userId) {
+      return next();
+    }
+
+    // Project owner/admin can also manage attachments
+    const { data: ticket } = await supabase
+      .from('bugs')
+      .select('project_id')
+      .eq('id', attachment.bug_id)
+      .single();
+
+    if (ticket) {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', ticket.project_id)
+        .single();
+
+      if (project?.owner_id === userId) {
+        return next();
+      }
+
+      const { data: membership } = await supabase
+        .from('project_members')
+        .select('role')
+        .eq('project_id', ticket.project_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (membership?.role === ROLES.ADMIN) {
+        return next();
+      }
+    }
+
+    return res.status(403).json({ message: 'Forbidden - You cannot manage this attachment' });
+  } catch (error) {
+    console.error('Manage attachment check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export default {
+  checkPermission,
+  isProjectOwner,
+  canViewProject,
+  canViewTicket,
+  canManageComment,
+  canManageAttachment,
+  isProjectAdmin,
+  isDeveloperOrAbove,
+  canEditTicket,
+  canDeleteTicket,
+  canAssignTicket,
+  isAdmin,
+  isSelfOrAdmin
+};
