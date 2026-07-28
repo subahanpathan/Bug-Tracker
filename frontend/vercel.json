@@ -3,7 +3,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "devCommand": "vite",
-  "framework": "vite"
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/(.*)",
