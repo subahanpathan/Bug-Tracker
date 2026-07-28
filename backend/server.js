@@ -96,28 +96,40 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // ============ ROOT & HEALTH ENDPOINTS (UNLIMITED / NO RATE LIMIT) ============
 
-// Root API Status Endpoint
-app.get('/', (req, res) => {
-  res.status(200).json({
-    status: 'success',
-    message: 'Bug Tracker API is running'
+// Root API Status Endpoint (GET & HEAD)
+app.route('/')
+  .get((req, res) => {
+    res.status(200).json({
+      status: 'success',
+      message: 'Bug Tracker API is running'
+    });
+  })
+  .head((req, res) => {
+    res.status(200).end();
   });
-});
 
-// Health Check Endpoint (Render / Monitoring)
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString()
+// Health Check Endpoints (GET & HEAD)
+app.route('/health')
+  .get((req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString()
+    });
+  })
+  .head((req, res) => {
+    res.status(200).end();
   });
-});
 
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString()
+app.route('/api/health')
+  .get((req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString()
+    });
+  })
+  .head((req, res) => {
+    res.status(200).end();
   });
-});
 
 // ============ RATE LIMITING FOR API ROUTES ============
 

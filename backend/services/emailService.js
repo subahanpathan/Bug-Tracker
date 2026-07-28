@@ -1,12 +1,16 @@
 // Email service using SendGrid
 import sgMail from '@sendgrid/mail';
 
-const isEmailConfigured = Boolean(process.env.SENDGRID_API_KEY);
+const isEmailConfigured = Boolean(
+  process.env.SENDGRID_API_KEY &&
+  typeof process.env.SENDGRID_API_KEY === 'string' &&
+  process.env.SENDGRID_API_KEY.startsWith('SG.')
+);
 
 if (isEmailConfigured) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 } else {
-  console.warn('⚠️ SENDGRID_API_KEY is missing. Email service will run in disabled mode.');
+  console.warn('⚠️ SENDGRID_API_KEY is missing or invalid (must start with "SG."). Email service disabled.');
 }
 
 export const emailTemplates = {
