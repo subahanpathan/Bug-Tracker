@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "devCommand": "vite",
   "framework": "vite",
-  "public": true,
+  "public":false,
   "rewrites": [
     {
       "source": "/(.*)",
