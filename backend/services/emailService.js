@@ -1,7 +1,13 @@
 // Email service using SendGrid
 import sgMail from '@sendgrid/mail';
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const isEmailConfigured = Boolean(process.env.SENDGRID_API_KEY);
+
+if (isEmailConfigured) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+} else {
+  console.warn('⚠️ SENDGRID_API_KEY is missing. Email service will run in disabled mode.');
+}
 
 export const emailTemplates = {
   TICKET_CREATED: {
@@ -28,6 +34,11 @@ export const emailTemplates = {
 
 class EmailService {
   async sendEmail(to, templateId, templateData) {
+    if (!isEmailConfigured) {
+      console.log(`[EMAIL DISABLED] Skip sending email to ${to}`);
+      return { success: false, disabled: true };
+    }
+
     try {
       const msg = {
         to,
@@ -40,11 +51,11 @@ class EmailService {
       console.log(`Email sent to ${to}`);
       return { success: true };
     } catch (error) {
-      console.error('SendGrid error:', error);
+      console.error('SendGrid error:', error?.message || error);
       if (error.response) {
         console.error(error.response.body);
       }
-      throw error;
+      return { success: false, error: error?.message || 'Email failed' };
     }
   }
 
@@ -135,14 +146,12 @@ class EmailService {
   }
 
   async sendBulkEmail(recipients, templateId, templateData) {
-    try {
-      const messages = recipients.map((email) => ({
-        to: email,
-        from: process.env.SENDGRID_FROM_EMAIL || 'noreply@bugtracker.app',
-        templateId,
-        dynamicTemplateData: templateData,
-      }));
+    if (!isEmailConfigured) {
+      console.log(`[EMAIL DISABLED] Skip bulk sending to ${recipients.length} recipients`);
+      return { success: false, disabled: true };
+    }
 
+    try {
       await sgMail.sendMultiple({
         to: recipients,
         from: process.env.SENDGRID_FROM_EMAIL || 'noreply@bugtracker.app',
@@ -153,8 +162,8 @@ class EmailService {
       console.log(`Bulk email sent to ${recipients.length} recipients`);
       return { success: true, sent: recipients.length };
     } catch (error) {
-      console.error('SendGrid bulk error:', error);
-      throw error;
+      console.error('SendGrid bulk error:', error?.message || error);
+      return { success: false, error: error?.message || 'Bulk email failed' };
     }
   }
 }

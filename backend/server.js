@@ -35,33 +35,43 @@ const __dirname = path.dirname(__filename);
 // ============ MIDDLEWARE ============
 
 // Security Middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: false
+}));
 
 // CORS Configuration
-const allowedOrigins = process.env.CORS_ORIGIN 
+const rawOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',') 
   : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:5000'];
 
+const allowedOrigins = rawOrigins.map(o => o.trim());
+
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+    if (
+      allowedOrigins.includes(origin) ||
+      allowedOrigins.includes('*') ||
+      process.env.NODE_ENV === 'development' ||
+      /\.vercel\.app$/.test(origin) ||
+      /\.onrender\.com$/.test(origin)
+    ) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Initialize Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     credentials: true
   }
@@ -80,25 +90,47 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate Limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-
-app.use(limiter);
-
 // Body Parser Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Protected Static Files (Removed public access for security)
-// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// ============ ROOT & HEALTH ENDPOINTS (UNLIMITED / NO RATE LIMIT) ============
 
-// ============ ROUTES ============
+// Root API Status Endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Bug Tracker API is running'
+  });
+});
 
-// API Routes
+// Health Check Endpoint (Render / Monitoring)
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ============ RATE LIMITING FOR API ROUTES ============
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // limit each IP to 200 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.'
+});
+
+app.use('/api/', limiter);
+
+// ============ API ROUTES ============
+
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/bugs', bugRoutes);
@@ -109,15 +141,6 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/filters', filterRoutes);
 app.use('/api', activityRoutes);
 app.use('/api', emailPreferenceRoutes);
-
-// Health Check
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'success',
-    message: 'Bug Tracker API is running',
-    timestamp: new Date().toISOString()
-  });
-});
 
 // ============ ERROR HANDLING ============
 
@@ -148,10 +171,13 @@ server.listen(PORT, () => {
 ╔════════════════════════════════════════╗
 ║     Bug Tracker API Server Running     ║
 ╠════════════════════════════════════════╣
-║  URL: http://localhost:${PORT}          ║
+║  Port: ${PORT}                            ║
 ║  Environment: ${process.env.NODE_ENV || 'development'}        ║
+║  Root Endpoint: http://localhost:${PORT}/  ║
+║  Health Endpoint: http://localhost:${PORT}/health
 ╚════════════════════════════════════════╝
   `);
 });
 
 export default app;
+
